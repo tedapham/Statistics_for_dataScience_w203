@@ -1,0 +1,161 @@
+b---
+title: 'W203 Statistics for Data Science: Lab 1'
+author: "James Beck & Ted Pham"
+date: "January, 2017"
+output:
+  pdf_document: default
+  html_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; With the data provided, an exploratory data analysis was performed in an attempt to uncover a connection between CEO salary and company performance. Additional observations and relationships observed between other variables of interest were also explored. This report explains and visualizes the process by which these connections were uncovered and provides commentary around the observed connections in an attempt to contextualize them within the dataset. 
+
+The variables that we have the ability to consider in our analysis include the following:
+```{r load}
+load("ceo_w203.RData")
+names(CEO)
+```
+
+The questions we can ask from the 8 variables are:  
+
+1. Does CEO salary correlate with profits? How does this change when normalizing profits/market value?
+2. Does having a degree and even a graduate degree help the CEO perform the job?
+3. How does CEO tenure at the company and as CEO affect profits?
+4. Do younger CEOs have more or less comten & ceoten and does age correlate with profits?
+5. Are the CEOs being paid accordingly to the company market value?
+  
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; From answering these questions, we can form a statistical model on how to adequately compensate for a CEO's company tenure, market value, profits, education, etc. so that we can properly motivate the CEO in the job. However, most CEOs these days have other compensations such as stock option and bonus that are not presented in this dataset. Therefore, to make a more accurate model, these factors must be considered. 
+
+## Data Check
+
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; We first would like to check out the dataset from a high level to look for any missing values, NAs, or other data characteristics that could create issues during later analysis. We first check to see if the dataset contains any NAs that will need to be handled appropriately to avoid any complications with calculation. We will also check to make sure that all variables have the same number of values to ensure that we are working with variables of equal size (i.e. no missing values):  
+&nbsp;
+```{r}
+sapply(CEO, function(x) sum(is.na(x)))
+sapply(CEO, function(x) length(x))
+```
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Since the output of this NA check is zero for all variables in the dataset we can conclude that NAs do not need to be a further consideration while we continue to explore and analyze the data. Additionally, all of the variable lengths appear to be the same size so we do not appear to be missing any data.
+
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; As another first step, we will check the summary of each of the variables to get an initial sense of the shape of the data we will be analyzing and attempt to note anything of immediate interest: 
+&nbsp;
+```{r}
+summary(CEO)
+```
+&nbsp;  
+**A few notable observations from this summary:**
+
+1. **Salary** -  A 3rd quratile of 1101 with a max value of 5299 seems to imply the existence of at least one notable outlier in the set. A histogram of the values confirms and highlights the existence of this outlier as well as showing the overall right skewness of the data.  
+&nbsp;
+```{r}
+hist(CEO$salary, breaks = seq(0,6000,by=100),
+     main = "Histogram of CEO Salary",
+     xlab = "CEO Salary $Th")
+```
+
+2. **College** - The data appears to be binary (college or no college) where `r round(mean(CEO$college)*100,digits=2) `% of CEOs went to college. Additionally upon closer inspection it appears that there are only a very small number of CEOs in the set that did not attend college so making any meaningful conclusions about the effects that college attendance has may not be worthwhile.
+3. **Grad** -  The data also appears to be binary (grad school or no grad school) where `r round(mean(CEO$grad)*100,digits=2) `% of CEOs went to grad school. Unlike the college variable, there seems to be a healthy split in the data set between the number of CEOs that attended graduate school and those that didn't.
+4. **Profits** - Noting that the minimum of the set is `r min(CEO$profits)` we will have to keep in mind that not all companies are posting a positive profit for the business. Additionally, the maximum of value of `r max(CEO$profits)` seems notably higher than the 3rd quartile value as visualized in the histogram below.  
+&nbsp;
+```{r}
+hist(CEO$profits, breaks = seq(-500,3000,by=50),
+     main = "Histogram of Company Profits",
+     xlab = "Profits $M")
+```
+&nbsp;  
+&nbsp;  
+5. **Market Value** -  Here we have a problem. The minimum market value of -1 is a red flag that upon further investigation shows what is apparently some problematic entries. We can confine the data set to just those entires with a market value of -1 to investigate further:
+&nbsp;  
+```{r}
+CEO_neg_val = subset(CEO, mktval == -1)
+sapply(CEO_neg_val, function(x) length(x))
+head(CEO_neg_val)
+```
+  
+What we can see here is that there are 5 entries that have this issue and in addition to having a market value of -1 these entries also have a profit value of exactly -1. Based on this observation these entries appear to be mistakes and will not be included in further analysis.  
+&nbsp;
+```{r}
+CEO_fixed = subset(CEO, mktval != -1)
+```
+
+
+## CEO Salary & Company Profits
+
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; To start, we can first explore the primary relationship of interest in the data set: CEO salary and company profits.
+
+```{r}
+library(car)
+r_string = paste("R =",round(cor(CEO_fixed$profits, CEO_fixed$salary),3))
+plot(CEO_fixed$salary, CEO_fixed$profits,
+     main = "Company Profts vs. CEO Salary",
+     xlab = "CEO Salary $Th",
+     ylab = "Company Profits $M")
+abline(lm(CEO_fixed$profits ~ CEO_fixed$salary))
+text(5000,1000,r_string)
+```
+&nbsp;  
+&nbsp;  
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; As seen in the scatterplot above with the corresponding regression line and printed R value, there is a positive correlation between CEO salary and company profits. However, the R value is only 0.399 and it's easy to see why from the plot. There are several values that are quite high on the CEO pay scale with very low or even negative profts for the company.
+
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; We could stop here and conclude with the simple observation that there does in fact appear to be some mild relationship between CEO salary and company profit, but we would be missing out on exploring several other potentially interesting variables and relationships within this data set.
+
+## College and Grad School
+
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Since we are still interested in how variables in the data set affect company profits, let's examine that metric from a different angle: college and graduate school attendance.
+&nbsp;  
+```{r}
+boxplot(profits ~ college, data=CEO_fixed, names=c("No College","Collge"),
+        main = "Company Profts vs. CEO College Attendance",
+        ylab="Company Profts $M")
+```
+&nbsp;  
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; It is interesting to see that the population of CEOs that did not attend college did not produce any of the negative profit companies. However, looking to the size of the 'No College' subset we see the following:
+```{r}
+length(subset(CEO_fixed, college == 0))
+```
+
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Unfortunately, there are only 8 entries in the data set that represent CEOs that have no college education. Since this is such a small set we do not feel we can make any meaningful conclusions based on this subset of the population. Comparing CEOs that have attended graduate school and those that have proves more interesting though as both of those subsets have a healthy number of entries to pull from.
+
+```{r}
+boxplot(profits ~ grad, data=CEO_fixed, names=c("No Grad School","Grad School"),
+        main = "Company Profts vs. CEO Grad School Attendance",
+        ylab="Company Profts $M")
+```
+&nbsp;  
+&nbsp;  
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; There isn't a lot that can be gleaned from this box plot - The grad school quartiles are somewhat more spread out that the 'no grad' quartiles. Each set contains some outliers on the high end and very few low end outliers. If we look to scatter plots and regression lines for each subset, however, we can see something interesting.
+&nbsp;  
+&nbsp;  
+```{r}
+CEO_grad = subset(CEO_fixed, grad == 1)
+r_string = paste("R =",round(cor(CEO_grad$profits, CEO_grad$salary),3))
+plot(CEO_grad$salary, CEO_grad$profits,
+     main = "Company Profts vs. CEO Salary w/ graduate school",
+     xlab = "CEO Salary $Th",
+     ylab = "Company Profits $M")
+abline(lm(CEO_grad$profits ~ CEO_grad$salary))
+text(2000,1000,r_string)
+
+```
+
+```{r}
+CEO_no_grad = subset(CEO_fixed, grad == 0)
+r_string = paste("R =",round(cor(CEO_no_grad$profits, CEO_no_grad$salary),3))
+plot(CEO_no_grad$salary, CEO_no_grad$profits,
+     main = "Company Profts vs. CEO Salary w/o graduate school",
+     xlab = "CEO Salary $Th",
+     ylab = "Company Profits $M")
+abline(lm(CEO_no_grad$profits ~ CEO_no_grad$salary))
+text(4000,1000,r_string)
+
+```
+&nbsp;  
+&nbsp;  
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Apparently, salary is a much better indicator of company profit for company's with a CEO who has graduate school experience than for companies where the CEO does not have graduate school experience.
+
+

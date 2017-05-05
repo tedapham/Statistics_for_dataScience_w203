@@ -1,0 +1,311 @@
+---
+title: "HW week 12"
+subtitle: "w203: Statistics for Data Science"
+author: "Legg (Ho Man) Yeung"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# OLS Inference
+
+The file videos.txt contains data scraped from Youtube.com.
+
+## Shape of Data
+
+1. There are 9489 observations of  9 variables. 9 observations have NA values across all fields except "video_id". In total there are 9480 observations we can use to build linear models.
+
+```{r}
+df = read.table("videos.txt", sep = "\t", header = T)
+#summary(df)
+str(df)
+head(df,10)
+
+filter = !is.na(df$views) & !is.na(df$rate) & !is.na(df$length) & !is.na(df$ratings)
+df = df[filter,]
+```
+
+
+## Question 1. 
+
+Fit a linear model predicting the number of views (views), from the length of a video (length) and its average user rating (rate).
+
+## Answer 1.
+
+1. Here's a model using the variables as-is.
+
+```{r}
+model = lm(views ~ length + rate, data = df)
+model
+```
+
+2. Since our variables "views" and "length" are highly skewed (demonstrated below), we build another model using Box-Cox transformation for comparative purposes.
+
+```{r}
+# log transform variable views
+df$log_views = log(df$views)
+
+# box-cox transform variable length
+lenBCMod = caret::BoxCoxTrans(df$length)
+print(lenBCMod)
+df$bc_length = df$length^0.3
+
+# construct new linear model
+model_transformed = lm(log_views ~ bc_length + rate, data = df)
+model_transformed
+```
+
+## Question 2. 
+
+Using diagnostic plots, background knowledge, and statistical tests, assess all 6 assumptions of the CLM.  When an assumption is violated, state what response you will take.
+
+## Answer 2.
+
+The six assumptions of Classical Linear Model:
+
+1. Linear Relationship
+
+  + We have assumed a linear relationship in the construction of the model. Without further restriction to the error term, this weak assumption holds.
+  
+2. Random Sampling: 
+
+  + We don't have good intuitions about the population distribution. Let examine if the sample distributions contradict our intuitions.
+
+  + "views" has extreme leptokurtosis(`r moments::kurtosis(df$views, na.rm = T)`) and positive skew (`r moments::skewness(df$views, na.rm = T)`). This is not surprising given few videos are popular, the popularity of these videos are further pushed by youtube's recommendation algorithms.
+  
+```{r}
+hist(df$views, breaks = "FD", main = "Views")
+```
+
+
+  + "length" also has high leptokurtosis( `r moments::kurtosis(df$length, na.rm = T)`) and positive skew (`r moments::skewness(df$length, na.rm = T)`). This is not surprising, given the effort to make a long video with substantial content can increase drastically with the length of video. However, notice two spikes of frequency at around 300, 600 and a sharp drop at around 650. These can be signs of a biased sample. 
+  
+  + To verify using external sources, we can test if our sample distribution of "age" and "category" represent the population properly. Specifically, we may use t-test to compare difference of means between our sample and other sources of youtube studies. Should there be a signifiant difference, we should consider to reweight the values of "views", "rate", "length" and "ratings" accordingly.
+
+```{r}
+hist(df$length, breaks = "FD")
+axis(1, at = seq(0, 5300, 500))
+```
+
+  + "rate" has a noticable leptokurtosis(`r moments::kurtosis(df$rate, na.rm = T)`) and moderate negative skew(`r moments::skewness(df$rate, na.rm = T)`) . Most values are either 5 or 0. This doesn't seem to reflect the true quality of video. Rather, the distribution reflects a self-selection problem in the collection of data: people who have strong feelings for the videos are more likely to give a rating than people who don't. On average, only a fraction(`r round(mean(df$ratings/df$views, na.rm = T), 3)`) of viewers leave a rating on a video. Even the most rating provoking video has less than half of viewers leaving a rating. Thus, the values under this variable are highly biased and will lead to biased estimates for the coefficient of "rate". 
+  
+  + One correction is to weight each value under "rate". Each value can be multiplied by the likelihood someone will take action to leave a rating given he/she feels a certain rating after watching a youtube video.
+
+```{r}
+hist(df$rate, breaks = "FD", main = "rate")
+```
+
+  + We should also check if our coefficients are affected severely by extreme outliers. Two points 5057 and 5067, came close to the Cook's distance boundary on the residuals vs plot. Many residuals also have high standardized values, indicating that our model has too much error and represent our data poorly.
+
+```{r}
+plot(model, which = 5)
+plot(model, which = 4)
+```
+
+  + Our transformed model is doing much better. Although a good proportion of cases still have standardized residual values greater than 2 and 3. We should recommend a revision of the researcher's sampling technique.
+  
+```{r}
+plot(model_transformed, which = 5)
+plot(model_transformed, which = 4)
+```
+
+3. No perfect Multi-collinearity
+
+  + We can use the correlation, variance inflation factor and scatter plot to examine if the two predictor variables are highly correlated.
+  
+  + The two predictors seem weakly correlated, it seems like most outliers of "length" has an above average "rating" (`r mean(df$rate, na.rm = T)`). 
+  
+  + The variance inflation factor also indicates that variance of estimated coefficients are not highly inflated compared to when the predictor variables are not linearly correlated.
+
+```{r}
+cor(df$length, df$rate, use = "complete.obs")
+car::vif(model)
+plot(df$length ~ df$rate)
+```
+
+  + Evaluations for our transformed model is similar. The predictor variables become slightly more correlated, but not enough to worry about.
+  
+```{r}
+cor(df$bc_length, df$rate, use = "complete.obs")
+car::vif(model_transformed)
+plot(df$bc_length ~ df$rate)
+```
+
+4. Zero-Conditional Mean
+
+  + All residuals deviate noticably above zero, there's a clear violation of zero-condition mean. Our estimated coefficients are biased. We should resort to exogeneity for a consistent estimator instead.
+  
+```{r}
+plot(model$residuals~model$fitted.values, ylim = c(0,100), main = "Residuals vs Fitted", ylab = "Residuals", xlab = "Fitted values")
+abline(a = 0, b = 0, col = "red")
+```
+
+  + The transformed model performed much better, although the mean of residuals given fitted values still deviate above and below the zero level where we have lots of data points. We should also resort to exogeneity for this model.
+  
+```{r}
+plot(model_transformed, which = 1)
+```
+
+4'. Exogeneity
+  
+  + If we are only interested in an associative model to find the line which best fit our dataset, we have exogeneity. Because OLS estimators, by minimizing squared residuals, ensures $cov(\hat{u},x)=0$ for a given dataset. In a nut shell, data and OLS estimator ensures exogeneity here.
+  
+  + However, if we are interested in causal inference, we will need to rebuild the model with a casual structure informed by designed experiment, which will give us very different residual patterns. In such models, exogeneity is rare. To demonstrate that our current predictors will not yield exogeneity in a causal model, we can run the regression with an additional variable, "ratings". Notice that the coefficient for "rate" dropped from `r round(coefficients(model)[3],2)` to 370.70, meaning "rating" can be a much closer cause for "views" than "rate". Thus our causal model will be endogenous for sure.
+
+```{r}
+model_ratings = lm(views ~ length + rate + ratings, data = df)
+model_ratings
+```
+
+  + Our log transformed model also gave lower coefficients for power-transformed "length" and "rate", indicating that the inclusion of "rating" explained away some variance in log of "views". "length" and "rate" have a lower effect on our estimates for "views" now.
+  
+```{r}
+model_ratings_transformed = lm(df$log_views ~ df$bc_length + df$rate + df$ratings)
+model_ratings_transformed
+```
+
+5. Constant Variance of Error Term: Homoskedasticity 
+   + From the Scale-Location plot, the standardized residuals noticably picks up as fitted values increases until fitted value reaches 14000. The sign of heteroskedasticity is strong.
+   
+```{r}
+plot(model, which = 3)
+```
+
+  + Notice that the Breusch-Pagan test failed to reject the null hypothesis of homoskedasticity regardless our large sample size. One explanation is that the Breusch Pagan test regress the model's residuals on the predictor variables, thus evaluate the linear relationship between the two. Since our residuals drop sharply around the fitted value of 14000, the overall linear relationship between the residuals and predictor variables is not strong. Therefore, Breusch Pagan test failed to pick up heteroskedasticity. 
+
+```{r}
+lmtest::bptest(model)
+```
+
+  + Notice that our heteroskedasticity robust standard errors are also dramatically smaller than regular standard errors. One explanation is that robust standard errors depend on the observations at the far ends of fitted values. Since our residuals have thin and roughly even tails, robust standard errors will miss the larger variance in the center thus produce smaller estimates of coefficient variance. We should depend on the more conservative, regular standard error instead of robust standard errors.
+  
+```{r}
+summary(model)
+```
+
+```{r}
+vcovHC_matrix = sandwich::vcovHC(model)
+lmtest::coeftest(model, vcov = vcovHC_matrix )
+```
+
+  + Our power transformed model gives residuals of much more stable variance here. There's a slight uptake towards the positive end of fitted values, where we have a lot of data.  
+
+```{r}
+plot(model_transformed, which = 3, title("Scale-Location Plot of Power Transformed Model"))
+```
+
+  + The Breusch Pagan test gives a statistcally significant result for heteroskedasticity, despite a healthy Scale-Location Plot. One explanation is that with our large sample, the test will show statiscal significance even for negligible deviations.
+
+```{r}
+lmtest::bptest(model_transformed)
+```
+
+6. Normal distribution of Error Term
+
+  + Our shape measures for residuals indicate extreme positive skew (measures `r moments::skewness(model$residuals)`) and leptokurtosis(measures `r moments::kurtosis(model$residuals)`). The QQ plot also show clear take off of residuals from the perfect diagonal.
+  
+```{r}
+plot(model, which = 2)
+```
+
+  + Both residuals and studentized residual plots show highly skewed distributions. Notice the dramatic difference between the range of residuals as-is and studentized residuals. This is because of the high standard error of our residuals.
+  
+```{r}
+# studentized residual daa
+stu_residuals = MASS::studres(model)
+
+# plot residuals
+hist(stu_residuals,  col = rgb(0,0,1,.5), xaxt = "n", xlim = c(-1, 60),  
+     main = "Distribution of Residuals \n close up", breaks = 50 )
+hist(model$residuals,  col=rgb(1, 0, 0, .5), xaxt = "n", add = T)
+axis(1, at = seq(0, 60, 5))
+legend("topright", legend = c("residuals", "studentized residuals"), 
+       fill = c(rgb(1, 0, 0, .5), rgb(0,0,1,.5)))
+
+# plot residuals
+hist(model$residuals,  main = "Distribution of Residuals \n full picture", col=rgb(1, 0, 0, .5), 
+     xaxt = "n", breaks = 50, xlim = c(-1, 1796000))
+hist(stu_residuals,  col = rgb(0,0,1,.5), xaxt = "n", add = T)
+axis(1, at = seq(0, 1796000, 100000))
+legend("topright", legend = c("residuals", "studentized residuals"), 
+       fill = c(rgb(1, 0, 0, .5), rgb(0,0,1,.5)))
+```
+
+  + Since Shapiro-Wilk test is not supported in R for sample size above 5000, we will run it with 1000 random resamples each of 5000 observations. The test results give 1000 p values that are very close to zero, showing that our test result is robust. Normality of error term is clearly violated.
+
+```{r}
+# p values of shapiro tests on 1000 resamples
+p_values_resampling = replicate(1000, shapiro.test(sample(model$residuals, 5000, 
+                                                          replace = TRUE, prob = NULL))$p.value)
+hist(p_values_resampling, main = "Shapiro Tests p values for 1000 resamples", 
+     breaks = 50, ylim = c(0,1000))
+```
+
+  + We may be able to rely on OLS asymptotics, since our sample size is quite large (9480 observations). To simulate sampling distribution of our error term, we can resample from our dataset (bootstrapping). Our pseudo sampling distribution is much more normal, hinting that OLS asymptotics for our sample will work.
+
+  + Alternatively, we may consider other generalized linear models which assume other distributions for our residuals, such as zero-inflated negative binomial regression which is more similar to our "views" distribution. 
+
+```{r}
+x = replicate(10000, mean(sample(model$residuals, 5000, replace = TRUE, prob = NULL)))
+hist(x, breaks = 50, main = "Bootstrapped Sampling Distribution")
+```
+
+  + In our power transformed model, our shape measures for residuals indicate much more tamed skewness(measures `r moments::skewness(model_transformed$residuals)`) and lepokurtosis(measures `r moments::kurtosis(model_transformed$residuals)`). The QQ plot also show better conformation to the perfect diagonal.
+  
+```{r}
+plot(model_transformed, which = 2, title("Normal Q-Q for transformed model"))
+```
+
+  + Both normalized residuals and studentized residual plots show close to normal distributions. Our power transformed model is complying much better with this assumption.
+  
+```{r}
+# studentized residual daa
+stu_residuals_trans = MASS::studres(model_transformed)
+
+# plot residuals
+hist(stu_residuals_trans,  col = rgb(0,0,1,.5), xaxt = "n", xlim = c(-6, 7),  main = "Distribution of Residuals -- power transformed model", breaks = 20, ylim = c(0, 2000))
+hist(model_transformed$residuals,  col=rgb(1, 0, 0, .5), xaxt = "n", add = T , breaks = 20 )
+axis(1, at = seq(-6,7, 1))
+legend("topright", legend = c("residuals", "studentized residuals"), fill = c(rgb(1, 0, 0, .5), rgb(0,0,1,.5)))
+
+```
+
+  + The Bootstrapped sampling distribution of our power transformed model also confirms that we can rely on OLS asymptotics.
+
+```{r}
+x = replicate(10000, mean(sample(model_transformed$residuals, 5000, replace = TRUE, prob = NULL)))
+hist(x, main = "Bootstrapped Sampling Distribution \n of power transformed model", breaks = 50 )
+```
+
+  + Using similar procedures as above, the Shapiro-wilk test output most p values under 0.05, which is contrary to our intuition. Note that because our sample size is large, even simulated data drawn from normal distribution can produce significant results with the Shapiro-wilk test. We should thus take the results with a grain of salt. The fact that the range of p values here is much less extreme than that of the model without power transformation, it is already a good sign. 
+
+```{r}
+# p values of shapiro tests on 1000 resamples
+p_values_resampling = replicate(1000, shapiro.test(sample(model_transformed$residuals, 5000, 
+                                                          replace = TRUE, prob = NULL))$p.value)
+hist(p_values_resampling, main = "Shapiro Tests p values for 1000 resamples", 
+     breaks = 50, ylim = c(0,1000))
+```
+
+## Question 3)
+
+Generate a printout of your model coefficients, complete with standard errors that are valid given your diagnostics. Comment on both the practical and statistical significance of your coefficients.
+
+## Answer 3)
+
+  + For our model without power transformation, coefficient of "length" is not statistically significant, given its small coefficient and usual magnitude of "views", its coefficient is not practically significant either. Coefficient of "rate" is statistically significant. Its interpretation -- 2105 more views for every unit increase in rating, is also practically significant.
+  
+  + For our model with power transformation, all coefficients are statistically significant. The interpretation of the coefficients -- 9.4% increase in views for every unit increase in cubic root of video length and `r round((exp(0.467)-1)*100,2)`$\%$ increase in views for every unit increase of average rating -- are also practically significant.
+
+```{r}
+stargazer::stargazer(model, model_transformed, type = "text", omit.stat = "f",
+                     title = "Linear Models Predicting Views",
+                     add.lines = list(c("AIC", round(AIC(model),0) , round(AIC(model_transformed),0))),
+                     star.cutoffs = c(0.05, 0.01, 0.001),
+                     column.labels = c("no transformation", "power transformed"),
+                     model.names = F)
+```
+
+

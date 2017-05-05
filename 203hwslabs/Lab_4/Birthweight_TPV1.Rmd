@@ -1,0 +1,143 @@
+---
+title: "Lab 4: Does Prenatal Care Improve Infant Health?"
+author: "w203: Statistics for Data Science"
+
+date: "April 10, 2017"
+output: pdf_document
+---
+
+# Introduction
+
+This is a group lab.  You may work in teams of 2 or 3.
+
+The file bwght\_w203.RData contains data from the National Center for Health Statistics and from birth certificates.  Your team has been hired by a health advocacy group to study this data and help them understand whether prenatal care improves health outcomes for newborn infants.
+
+The file includes a birthweight variable.  Additonally, the one- and five-minute APGAR scores are included.  These are measures of the well being of infants just after birth.
+
+Variable descriptions are provided as follows.
+
+```{r}
+rm(list=ls())
+load("bwght_w203.RData")
+desc
+```
+
+
+```{r}
+summary(data)
+```
+
+```{r}
+hist(data$bwght)
+hist(data$lbwght)
+attach(data)
+table(lbw)
+table(vlbw)
+table(male)
+table(mwhte)
+table(fwhte)
+table(mblck)
+table(fblck)
+table(moth)
+table(foth)
+```
+```{r}
+data1 = (dplyr::filter(data,lbw ==0 & vlbw ==0))
+baby_b = (dplyr::filter(data, mwhte == 1))
+baby_g = (dplyr::filter(data, mwhte == 0))
+t.test(baby_b$bwght,baby_g$bwght)
+t.test(baby_b$omaps,baby_g$omaps)
+t.test(baby_b$fmaps,baby_g$fmaps)
+```
+
+
+```{r}
+hist(data$fmaps)
+hist(data$bwght)
+hist(data$omaps)
+hist(data$lbwght)
+```
+
+```{r}
+dataNaOmit <- na.omit(data)
+#fwd.fmaps.full = lm(fmaps ~. - omaps - bwght - lbw - vlbw - lbwght, data=dataNaOmit)
+fwd.fmaps.full = lm(fmaps ~. - omaps - bwght - lbwght, data=dataNaOmit)
+fwd.fmaps.start = lm(fmaps ~1, data=dataNaOmit)
+step(fwd.fmaps.start, scope = list(upper=fwd.fmaps.full), data=dataNaOmit, direction="forward")
+```
+```{r}
+dataNaOmit1 <- na.omit(data1)
+fwd.fmaps.full = lm(fmaps ~. - omaps - bwght - lbw - vlbw - lbwght, data=dataNaOmit1)
+
+fwd.fmaps.start = lm(fmaps ~1, data=dataNaOmit1)
+step(fwd.fmaps.start, scope = list(upper=fwd.fmaps.full), data=dataNaOmit1, direction="forward")
+```
+```{r}
+fwd.omaps.full = lm(omaps ~. - fmaps - bwght - lbwght, data=dataNaOmit)
+#fwd.full1 = lm(fmaps ~mage+meduc+monpre+npvis+cigs+drink+male+mwhte+magesq+npvissq, data=dataNaOmit)
+fwd.omaps.start = lm(omaps ~1, data=dataNaOmit)
+step(fwd.omaps.start, scope = list(upper=fwd.omaps.full), data=dataNaOmit, direction="forward")
+```
+```{r}
+fwd.omaps.full = lm(omaps ~. - fmaps - bwght - lbw -vlbw - lbwght, data=dataNaOmit1)
+#fwd.full1 = lm(fmaps ~mage+meduc+monpre+npvis+cigs+drink+male+mwhte+magesq+npvissq, data=dataNaOmit)
+fwd.omaps.start = lm(omaps ~1, data=dataNaOmit1)
+step(fwd.omaps.start, scope = list(upper=fwd.omaps.full), data=dataNaOmit1, direction="forward")
+```
+```{r}
+fwd.bwght.full = lm(bwght ~. - omaps - fmaps - lbw - vlbw - lbwght, data=dataNaOmit)
+fwd.bwght.start = lm(bwght ~1, data=dataNaOmit)
+step(fwd.bwght.start, scope = list(upper=fwd.bwght.full), data=dataNaOmit, direction="both")
+```
+```{r}
+fwd.lbwght.full = lm(lbwght ~. - omaps - fmaps - lbw - vlbw - bwght, data=dataNaOmit1)
+fwd.lbwght.start = lm(lbwght ~1, data=dataNaOmit1)
+step(fwd.lbwght.start, scope = list(upper=fwd.lbwght.full), data=dataNaOmit1, direction="forward")
+```
+```{r}
+baby_bNaOmit <- na.omit(baby_b)
+fwd.bwght.full = lm(bwght ~. - omaps - fmaps - lbw - vlbw - lbwght-male, data=baby_bNaOmit)
+fwd.bwght.start = lm(bwght ~1, data=baby_bNaOmit)
+step(fwd.bwght.start, scope = list(upper=fwd.bwght.full), data=baby_bNaOmit, direction="forward")
+```
+
+```{r}
+baby_gNaOmit <- na.omit(baby_g)
+fwd.bwght.full = lm(bwght ~. - omaps - fmaps - lbw - vlbw - lbwght-male, data=baby_gNaOmit)
+fwd.bwght.start = lm(bwght ~1, data=baby_bNaOmit)
+step(fwd.bwght.start, scope = list(upper=fwd.bwght.full), data=baby_gNaOmit, direction="forward")
+```
+# Assignment
+
+Prepare a report addressing the question of whether prenatal care improves newborn health outcomes.
+
+A successful submission will include
+
+1. A brief introduction
+
+2. A model building process, supported by exploratory analysis.  Your EDA should be interspersed with, and support, your modeling decisions.  In particular, you should use exploratory techniques to address
+
+- What transformations to apply to variables and what new variables should be created.
+
+- What variables should be included in each model
+
+- Whether model assumptions are met
+
+3. A minimum of three model specifications.  In particular, you should include
+
+- One model with only the explanatory variables of key interest.
+
+- One model that includes only covariates that you believe increase the accuracy of your results without introducing bias.
+
+- One model that includes the previous covariates, but also covariates that may be problematic for one reason or another.
+
+4. For your first model, a detailed assessment of the 6 CLM assumptions.  For additional models, you should check all assumptions, but only highlight major differences from your first model in your report.
+
+5. A well-formatted regression table summarizing your model results.  Make sure that standard errors presented in this table are valid.  Also be sure to comment on both statistical and practical significance.
+
+6. A discussion of whether your results can be interpretted causally.  In particular, include a discussion of what variables are not included in your analysis and the likely direction of omitted variable bias.  Also include a discussion of which included variables may bias your results by absorbing some of the causal effect of prenatal care.
+
+7. A brief conclusion with a few high-level takeaways.
+
+
+Please limit all submissions to 30 pages.  Be sure to turn in both your pdf report and also your source code.

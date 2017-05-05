@@ -1,0 +1,731 @@
+---
+title: 'Lab 4: Does Prenatal Care Improve Infant Health?'
+author: "Chris Hipple, Phat Doan, Ted Pham"
+date: "April 10, 2017"
+output:
+  word_document: default
+  pdf_document: default
+---
+
+# Introduction
+
+This is a group lab.  You may work in teams of 2 or 3.
+
+The file bwght\_w203.RData contains data from the National Center for Health Statistics and from birth certificates.  Your team has been hired by a health advocacy group to study this data and help them understand whether prenatal care improves health outcomes for newborn infants.
+
+The file includes a birthweight variable.  Additonally, the one- and five-minute APGAR scores are included.  These are measures of the well being of infants just after birth.
+
+Variable descriptions are provided as follows.
+
+```{r}
+load("bwght_w203.RData")
+
+# desc
+```
+
+```{r}
+library(boot)
+library(pastecs)
+library(car)
+#library(Hmisc)
+#library(plyr)
+library(gmodels)
+```
+
+
+
+
+# Assignment
+
+Prepare a report addressing the question of whether prenatal care improves newborn health outcomes.
+
+A successful submission will include
+
+1. A brief introduction & exploratory analysis
+
+### Get description and a quick snapshot of the dataset
+```{r}
+desc
+```
+```{r}
+summary(data)
+```
+There are ~200 observation with null/na. This would require a missing value treatment
+
+# Remove null/na entirely and save to a new dataframe df_na
+```{r}
+df_naomit = na.omit(data)
+
+summary(df_naomit)
+```
+
+### Exploratory analysis of mother's age data
+```{r}
+# descriptive stat
+summary(df_naomit$mage)
+
+# histogram
+hist(df_naomit$mage, main = "Distribution of mother's age at the time of giving birth"
+               , xlab = "Mother's age"
+               , breaks = seq(15, 45, by = 1)
+               , col = "blue", ylim = c(0,200))
+abline(v = mean(df_naomit$mage), col = "red")
+abline(v = median(df_naomit$mage), col = "green")
+
+legend("topright", c("Mean", "Median"), col = c("red", "green"), pch = "|")
+```
+Historgram shows a normal distribution with no outliers (i.e. too young)
+
+
+### Exploratory analysis of mother's education
+```{r}
+summary(df_naomit$meduc)
+
+hist(df_naomit$meduc, main = "Distribution of mother's education"
+               , xlab = "Mother's education"
+               , breaks = seq(0, 18,by=1)
+               , col = "blue", ylim = c(0,600))
+abline(v = mean(df_naomit$meduc), col = "red")
+abline(v = median(df_naomit$meduc), col = "green")
+
+legend("topleft", c("Mean", "Median"), col = c("red", "green"), pch = "|")
+
+# Conduct mother'education variable validity test by deduct mother's education with mother's age. Should not have any negative value
+df_naomit$meduc_test = df_naomit$mage - df_naomit$meduc
+
+#sort(df_naomit$meduc_test)
+# df_naomit[which(df_naomit$meduc_test == 6),]
+```
+Mother's education varibale is highly skewed to the right that can break down into 4 groups: did not complete HS, HS diploma, some college, and college degree. Validity test shows no invalid observation for the variable.
+
+### Exploratory analysis of fatherr's age
+```{r}
+# descriptive stat
+summary(df_naomit$fage)
+
+# histogram
+hist(df_naomit$fage, main = "Distribution of father's age at the time of having a newborn"
+               , xlab = "Father's age"
+               , breaks = seq(17, 63, by = 1)
+               , col = "blue", ylim = c(0,150))
+abline(v = mean(df_naomit$fage), col = "red")
+abline(v = median(df_naomit$fage), col = "green")
+
+legend("topright", c("Mean", "Median"), col = c("red", "green"), pch = "|")
+```
+
+### Exploratory analysis of father's education
+```{r}
+summary(df_naomit$feduc)
+
+hist(df_naomit$feduc, main = "Distribution of father's education"
+               , xlab = "Father's education"
+               , breaks = seq(2, 17,by=1)
+               , col = "blue", ylim = c(0,600))
+abline(v = mean(df_naomit$feduc), col = "red")
+abline(v = median(df_naomit$feduc), col = "green")
+
+legend("topleft", c("Mean", "Median"), col = c("red", "green"), pch = "|")
+```
+
+### Exploratory analysis of month prenatal care began
+```{r}
+# descriptive stat
+summary(df_naomit$monpre)
+
+# histogram
+hist(df_naomit$monpre, main = "Distribution of month prenatal care begins"
+               , xlab = "Month Prenatal care begins"
+               , breaks = seq(-1, 9, by = 1)
+               , col = "blue", ylim = c(0,800))
+abline(v = mean(df_naomit$monpre), col = "red")
+abline(v = median(df_naomit$monpre), col = "green")
+
+legend("topright", c("Mean", "Median"), col = c("red", "green"), pch = "|")
+```
+Variable is heavily skewed to the left with majority of mothers start prenatal care at 2 months (first tri-semester). No outlier was observed.  
+
+### Exploratory analysis of number of prenatal visit
+```{r}
+# descriptive stat
+summary(df_naomit$npvis)
+
+# histogram
+hist(df_naomit$npvis, main = "Distribution of number of prenatal care visit"
+               , xlab = "Number of prenatal care visit during pregnacy"
+               , breaks = seq(-1, 40, by = 1)
+               , col = "blue", ylim = c(0,600))
+abline(v = mean(df_naomit$npvis), col = "red")
+abline(v = median(df_naomit$npvis), col = "green")
+
+legend("topright", c("Mean", "Median"), col = c("red", "green"), pch = "|")
+```
+Normal distribution with most mothers have 12 prenatal care visits during their pregnancy. There are a few outliers with greater than 20 visits. This might be an indicator of high risk pregnancy
+
+### Exploratory analysis of birthweight
+```{r}
+# descriptive stat
+summary(df_naomit$bwght)
+
+# histogram
+hist(df_naomit$bwght, main = "Distribution of weight at birth"
+               , xlab = "Weight at birth (grams)"
+               , breaks = seq(0, 6000, by = 100)
+               , col = "blue", ylim = c(0,150))
+abline(v = mean(df_naomit$bwght), col = "red")
+abline(v = median(df_naomit$bwght), col = "green")
+
+legend("topright", c("Mean", "Median"), col = c("red", "green"), pch = "|")
+
+df_naomit[which(df_naomit$bwght <= 1000),]
+```
+Birthweight variable shows a normal distribution. 2 outliers with less than 1000 grams at birth. Need to investigate further
+
+### Exploratory analysis of apgar score at 1 minute
+```{r}
+# descriptive stat
+summary(df_naomit$omaps)
+
+# histogram
+hist(df_naomit$omaps, main = "Distribution of APGAR score 1 minute after Birth"
+               , xlab = "APGAR score 1 minute after Birth"
+               , breaks = seq(-1, 10, by = 1)
+               , col = "blue", ylim = c(0,1000))
+abline(v = mean(df_naomit$omaps), col = "red")
+abline(v = median(df_naomit$omaps), col = "green")
+
+legend("topright", c("Mean", "Median"), col = c("red", "green"), pch = "|")
+
+```
+APGAR Score 1 Minute after Birth is heavily skewed right but the majority at 8 and 9
+
+### Exploratory analysis of apgar score at 5 minutes
+```{r}
+# descriptive stat
+summary(df_naomit$fmaps)
+
+# histogram
+hist(df_naomit$fmaps, main = "Distribution of APGAR score 5 minutes after Birth"
+               , xlab = "APGAR score 5 minutes after Birth"
+               , breaks = seq(-1, 10, by = 1)
+               , col = "blue", ylim = c(0,1000))
+abline(v = mean(df_naomit$fmaps), col = "red")
+abline(v = median(df_naomit$fmaps), col = "green")
+
+legend("topleft", c("Mean", "Median"), col = c("red", "green"), pch = "|")
+
+```
+APGAR Score 5 Minute after Birth is heavily skewed right but the majority at 9. This shows a improvement for most babies between 1 minute and 5 minutes after birth
+
+### Exploratory analysis of apgar score improvement between 1 minute and 5 minutes after birth
+```{r}
+# Create a crosstable to compore apgar schore at 1 minute and 5 minutes after birth
+CrossTable(df_naomit$fmaps, df_naomit$omaps, format = "SPSS"
+          , prop.c = FALSE, prop.r = FALSE, prop.t = TRUE
+          , prop.chisq = FALSE
+          , dnn = c("APGAR Score 5 Minutes after Birth", "APGAR Score 1 Minute after Birth"))
+```
+
+
+```{r}
+df_naomit$apscha = df_naomit$fmaps - df_naomit$omaps
+
+# descriptive stat with table and percentage of the population
+
+CrossTable(df_naomit$apscha, format = "SPSS"
+          , prop.c = FALSE, prop.r = FALSE, prop.t = TRUE
+          , prop.chisq = FALSE)
+
+
+# histogram
+hist(df_naomit$apscha, main = "Distribution of APGAR score change betwen 1 minute and 5 minutes after birth"
+               , xlab = "APGAR score change betwen 1 minute and 5 minutes after birth"
+               , breaks = seq(-2, 10, by = 1)
+               , col = "blue", ylim = c(0,1000))
+abline(v = mean(df_naomit$apscha), col = "red")
+abline(v = median(df_naomit$apscha), col = "green")
+
+legend("topright", c("Mean", "Median"), col = c("red", "green"), pch = "|")
+
+```
+<1% of newborn has a decrease in APGAR from 5 minutes of birth while 52% has no change in score and ~47% increased in APGAR score.
+
+### Exploratory analysis of cigarette use during pregnancy
+```{r}
+# descriptive stat
+summary(df_naomit$cigs)
+
+# histogram
+hist(df_naomit$cigs, main = "Distribution of cigarettes use during pregnancy"
+               , xlab = "Average cigarettes per day"
+               , breaks = seq(-1, 40, by = 1)
+               , col = "blue", ylim = c(0,1000))
+abline(v = mean(df_naomit$cigs), col = "red")
+abline(v = median(df_naomit$cigs), col = "green")
+
+legend("topright", c("Mean", "Median"), col = c("red", "green"), pch = "|")
+```
+
+### Exploratory analysis of average drinks per week
+```{r}
+# descriptive stat
+summary(df_naomit$drink)
+
+# histogram
+hist(df_naomit$drink, main = "Distribution of alcohol use during pregnancy"
+               , xlab = "Average drinks per week"
+               , breaks = seq(-1, 8, by = 1)
+               , col = "blue", ylim = c(0,1800))
+abline(v = mean(df_naomit$drink), col = "red")
+abline(v = median(df_naomit$drink), col = "green")
+
+legend("topright", c("Mean", "Median"), col = c("red", "green"), pch = "|")
+```
+
+### Exploratory analysis of Newborn weight
+```{r}
+CrossTable(df_naomit$lbw, df_naomit$vlbw, format = "SPSS"
+          , prop.c = FALSE, prop.r = FALSE, prop.t = TRUE
+          , prop.chisq = FALSE
+          , dnn = c("Low Birth Weight (<2000g)", "Very Low Birth Weight (<1500g)"))
+
+```
+Only 1.3% of the newborn from the dataset was considered to have low birthweight and 
+
+
+### Exploratory analysis of Newborn gender
+```{r}
+CrossTable(df_naomit$male, format = "SPSS"
+          , prop.c = FALSE, prop.r = FALSE, prop.t = FALSE
+          , prop.chisq = FALSE)
+```
+There is a close split between male and female newborn in the dataset
+
+### Exploratory analysis of Mother's race
+```{r}
+CrossTable(df_naomit$mwhte, df_naomit$mblck, format = "SPSS"
+          , prop.c = FALSE, prop.r = FALSE, prop.t = TRUE
+          , prop.chisq = FALSE
+          , dnn = c("Mother is White","Mother is Black"))
+
+```
+Heavily skewed white with only ~5% black and ~5% other
+
+### Exploratory analysis of Father's race
+```{r}
+CrossTable(df_naomit$fwhte, df_naomit$fblck, format = "SPSS"
+          , prop.c = FALSE, prop.r = FALSE, prop.t = TRUE
+          , prop.chisq = FALSE
+          , dnn = c("Father is White","Father is Black"))
+
+```
+Similar to Mother's race variable, father's race is heavily skewed white with only ~5% black and ~5% other
+
+```{r}
+#desc
+```
+
+# Running scatterplotmatrix of car package to identify potential correlations for model building process
+```{r}
+#scatterplotMatrix(~mage + meduc + monpre + npvis + bwght + omaps + fmaps + apscha + cigs + drink, data = df_naomit)
+```
+
+
+# Imputation Method with Knn to replace null/na
+```{r}
+library(DMwR)
+df_knn <- knnImputation(data[, !names(data) %in% "medv"])  # perform knn imputation.
+anyNA(df_knn)
+```
+
+### Exploratory analysis of mother's age data
+```{r}
+# descriptive stat
+summary(df_knn$mage)
+
+# histogram
+hist(df_knn$mage, main = "Distribution of mother's age at the time of giving birth"
+               , xlab = "Mother's age"
+               , breaks = seq(15, 45, by = 1)
+               , col = "blue", ylim = c(0,200))
+abline(v = mean(df_knn$mage), col = "red")
+abline(v = median(df_knn$mage), col = "green")
+
+legend("topright", c("Mean", "Median"), col = c("red", "green"), pch = "|")
+```
+Historgram shows a normal distribution with no outliers (i.e. too young)
+
+
+### Exploratory analysis of mother's education
+```{r}
+summary(df_knn$meduc)
+
+hist(df_knn$meduc, main = "Distribution of mother's education"
+               , xlab = "Mother's education"
+               , breaks = seq(0, 18,by=1)
+               , col = "blue", ylim = c(0,600))
+abline(v = mean(df_knn$meduc), col = "red")
+abline(v = median(df_knn$meduc), col = "green")
+
+legend("topleft", c("Mean", "Median"), col = c("red", "green"), pch = "|")
+
+# Conduct mother'education variable validity test by deduct mother's education with mother's age. Should not have any negative value
+df_knn$meduc_test = df_knn$mage - df_knn$meduc
+
+#sort(df_knn$meduc_test)
+# df_knn[which(df_knn$meduc_test == 6),]
+```
+Mother's education varibale is highly skewed to the right that can break down into 4 groups: did not complete HS, HS diploma, some college, and college degree. Validity test shows no invalid observation for the variable.
+
+### Exploratory analysis of fatherr's age
+```{r}
+# descriptive stat
+summary(df_knn$fage)
+
+# histogram
+hist(df_knn$fage, main = "Distribution of father's age at the time of having a newborn"
+               , xlab = "Father's age"
+               , breaks = seq(17, 64, by = 1)
+               , col = "blue", ylim = c(0,150))
+abline(v = mean(df_knn$fage), col = "red")
+abline(v = median(df_knn$fage), col = "green")
+
+legend("topright", c("Mean", "Median"), col = c("red", "green"), pch = "|")
+```
+
+### Exploratory analysis of father's education
+```{r}
+summary(df_knn$feduc)
+
+hist(df_knn$feduc, main = "Distribution of father's education"
+               , xlab = "Father's education"
+               , breaks = seq(2, 17,by=1)
+               , col = "blue", ylim = c(0,600))
+abline(v = mean(df_knn$feduc), col = "red")
+abline(v = median(df_knn$feduc), col = "green")
+
+legend("topleft", c("Mean", "Median"), col = c("red", "green"), pch = "|")
+```
+
+### Exploratory analysis of month prenatal care began
+```{r}
+# descriptive stat
+summary(df_knn$monpre)
+
+# histogram
+hist(df_knn$monpre, main = "Distribution of month prenatal care begins"
+               , xlab = "Month Prenatal care begins"
+               , breaks = seq(-1, 9, by = 1)
+               , col = "blue", ylim = c(0,800))
+abline(v = mean(df_knn$monpre), col = "red")
+abline(v = median(df_knn$monpre), col = "green")
+
+legend("topright", c("Mean", "Median"), col = c("red", "green"), pch = "|")
+```
+Variable is heavily skewed to the left with majority of mothers start prenatal care at 2 months (first tri-semester). No outlier was observed.  
+
+### Exploratory analysis of number of prenatal visit
+```{r}
+# descriptive stat
+summary(df_knn$npvis)
+
+# histogram
+hist(df_knn$npvis, main = "Distribution of number of prenatal care visit"
+               , xlab = "Number of prenatal care visit during pregnacy"
+               , breaks = seq(-1, 40, by = 1)
+               , col = "blue", ylim = c(0,600))
+abline(v = mean(df_knn$npvis), col = "red")
+abline(v = median(df_knn$npvis), col = "green")
+
+legend("topright", c("Mean", "Median"), col = c("red", "green"), pch = "|")
+```
+Normal distribution with most mothers have 12 prenatal care visits during their pregnancy. There are a few outliers with greater than 20 visits. This might be an indicator of high risk pregnancy
+
+### Exploratory analysis of birthweight
+```{r}
+# descriptive stat
+summary(df_knn$bwght)
+
+# histogram
+hist(df_knn$bwght, main = "Distribution of weight at birth"
+               , xlab = "Weight at birth (grams)"
+               , breaks = seq(0, 6000, by = 100)
+               , col = "blue", ylim = c(0,150))
+abline(v = mean(df_knn$bwght), col = "red")
+abline(v = median(df_knn$bwght), col = "green")
+
+legend("topright", c("Mean", "Median"), col = c("red", "green"), pch = "|")
+
+df_knn[which(df_knn$bwght <= 1000),]
+```
+Birthweight variable shows a normal distribution. 2 outliers with less than 1000 grams at birth. Need to investigate further
+
+### Exploratory analysis of apgar score at 1 minute
+```{r}
+# descriptive stat
+summary(df_knn$omaps)
+
+# histogram
+hist(df_knn$omaps, main = "Distribution of APGAR score 1 minute after Birth"
+               , xlab = "APGAR score 1 minute after Birth"
+               , breaks = seq(-1, 10, by = 1)
+               , col = "blue", ylim = c(0,1000))
+abline(v = mean(df_knn$omaps), col = "red")
+abline(v = median(df_knn$omaps), col = "green")
+
+legend("topright", c("Mean", "Median"), col = c("red", "green"), pch = "|")
+
+```
+APGAR Score 1 Minute after Birth is heavily skewed right but the majority at 8 and 9
+
+### Exploratory analysis of apgar score at 5 minutes
+```{r}
+# descriptive stat
+summary(df_knn$fmaps)
+
+# histogram
+hist(df_knn$fmaps, main = "Distribution of APGAR score 5 minutes after Birth"
+               , xlab = "APGAR score 5 minutes after Birth"
+               , breaks = seq(-1, 10, by = 1)
+               , col = "blue", ylim = c(0,1000))
+abline(v = mean(df_knn$fmaps), col = "red")
+abline(v = median(df_knn$fmaps), col = "green")
+
+legend("topleft", c("Mean", "Median"), col = c("red", "green"), pch = "|")
+
+```
+APGAR Score 5 Minute after Birth is heavily skewed right but the majority at 9. This shows a improvement for most babies between 1 minute and 5 minutes after birth
+
+### Exploratory analysis of apgar score improvement between 1 minute and 5 minutes after birth
+```{r}
+# Create a crosstable to compore apgar schore at 1 minute and 5 minutes after birth
+CrossTable(df_knn$fmaps, df_knn$omaps, format = "SPSS"
+          , prop.c = FALSE, prop.r = FALSE, prop.t = TRUE
+          , prop.chisq = FALSE
+          , dnn = c("APGAR Score 5 Minutes after Birth", "APGAR Score 1 Minute after Birth"))
+```
+
+
+```{r}
+df_knn$apscha = df_knn$fmaps - df_knn$omaps
+
+# descriptive stat with table and percentage of the population
+
+CrossTable(df_knn$apscha, format = "SPSS"
+          , prop.c = FALSE, prop.r = FALSE, prop.t = TRUE
+          , prop.chisq = FALSE)
+
+
+# histogram
+hist(df_knn$apscha, main = "Distribution of APGAR score change betwen 1 minute and 5 minutes after birth"
+               , xlab = "APGAR score change betwen 1 minute and 5 minutes after birth"
+               , breaks = seq(-2, 10, by = 1)
+               , col = "blue", ylim = c(0,1000))
+abline(v = mean(df_knn$apscha), col = "red")
+abline(v = median(df_knn$apscha), col = "green")
+
+legend("topright", c("Mean", "Median"), col = c("red", "green"), pch = "|")
+
+```
+<1% of newborn has a decrease in APGAR from 5 minutes of birth while 52% has no change in score and ~47% increased in APGAR score.
+
+### Exploratory analysis of cigarette use during pregnancy
+```{r}
+# descriptive stat
+summary(df_knn$cigs)
+
+# histogram
+hist(df_knn$cigs, main = "Distribution of cigarettes use during pregnancy"
+               , xlab = "Average cigarettes per day"
+               , breaks = seq(-1, 40, by = 1)
+               , col = "blue", ylim = c(0,1000))
+abline(v = mean(df_knn$cigs), col = "red")
+abline(v = median(df_knn$cigs), col = "green")
+
+legend("topright", c("Mean", "Median"), col = c("red", "green"), pch = "|")
+```
+
+### Exploratory analysis of average drinks per week
+```{r}
+# descriptive stat
+summary(df_knn$drink)
+
+# histogram
+hist(df_knn$drink, main = "Distribution of alcohol use during pregnancy"
+               , xlab = "Average drinks per week"
+               , breaks = seq(-1, 8, by = 1)
+               , col = "blue", ylim = c(0,1800))
+abline(v = mean(df_knn$drink), col = "red")
+abline(v = median(df_knn$drink), col = "green")
+
+legend("topright", c("Mean", "Median"), col = c("red", "green"), pch = "|")
+```
+
+### Exploratory analysis of Newborn weight
+```{r}
+CrossTable(df_knn$lbw, df_knn$vlbw, format = "SPSS"
+          , prop.c = FALSE, prop.r = FALSE, prop.t = TRUE
+          , prop.chisq = FALSE
+          , dnn = c("Low Birth Weight (<2000g)", "Very Low Birth Weight (<1500g)"))
+
+```
+Only 1.7% of the newborn from the dataset was considered to have low birthweight and 
+
+
+### Exploratory analysis of Newborn gender
+```{r}
+CrossTable(df_knn$male, format = "SPSS"
+          , prop.c = FALSE, prop.r = FALSE, prop.t = FALSE
+          , prop.chisq = FALSE)
+```
+There is a close split between male and female newborn in the dataset
+
+### Exploratory analysis of Mother's race
+```{r}
+CrossTable(df_knn$mwhte, df_knn$mblck, format = "SPSS"
+          , prop.c = FALSE, prop.r = FALSE, prop.t = TRUE
+          , prop.chisq = FALSE
+          , dnn = c("Mother is White","Mother is Black"))
+
+```
+Heavily skewed white with only ~5% black and ~6% other
+
+### Exploratory analysis of Father's race
+```{r}
+CrossTable(df_knn$fwhte, df_knn$fblck, format = "SPSS"
+          , prop.c = FALSE, prop.r = FALSE, prop.t = TRUE
+          , prop.chisq = FALSE
+          , dnn = c("Father is White","Father is Black"))
+
+```
+Similar to Mother's race variable, father's race is heavily skewed white with only ~5% black and ~5% other
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+
+2. A model building process, supported by exploratory analysis.  Your EDA should be interspersed with, and support, your modeling decisions.  In particular, you should use exploratory techniques to address
+
+- What transformations to apply to variables and what new variables should be created.
+
+- What variables should be included in each model
+
+- Whether model assumptions are met
+
+3. A minimum of three model specifications.  In particular, you should include
+
+- One model with only the explanatory variables of key interest.
+
+- One model that includes only covariates that you believe increase the accuracy of your results without introducing bias.
+
+- One model that includes the previous covariates, but also covariates that may be problematic for one reason or another.
+
+4. For your first model, a detailed assessment of the 6 CLM assumptions.  For additional models, you should check all assumptions, but only highlight major differences from your first model in your report.
+
+5. A well-formatted regression table summarizing your model results.  Make sure that standard errors presented in this table are valid.  Also be sure to comment on both statistical and practical significance.
+
+6. A discussion of whether your results can be interpretted causally.  In particular, include a discussion of what variables are not included in your analysis and the likely direction of omitted variable bias.  Also include a discussion of which included variables may bias your results by absorbing some of the causal effect of prenatal care.
+
+7. A brief conclusion with a few high-level takeaways.
+
+Please limit all submissions to 30 pages.  Be sure to turn in both your pdf report and also your source code.
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+
+-----------------------------------------------------------------------------------------------------
+-- Ideas
+-----------------------------------------------------------------------------------------------------
+
+
+### Discussion:
+  1/ How do we define health outcomes of new born infants? 
+    a/ Birthweight (underweight & overweight)
+    b/ APGAR score
+    c/ APGAR improvement between 1 minute and 5 minutes
+
+### Analysis
+  1/ Look at mother's education and birthweight/apgar score
+  2/ Group mother's prenatal care start month into first, second, and third tri-semester and birthweight/apgar score
+  3/ Look at apgar score at 1 minute and 5 minutes and improvement
+  4/ Group mother's cig use into (none, light, mod, and heavy users) and birthweight/apgar score
+  5/ Number of prenatal visit and birthweight/apgar score
+    . Could be an indicate of high risk babies
+  6/ Interaction
+    . father & mother: age, education, race
+

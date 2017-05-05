@@ -1,0 +1,144 @@
+---
+title: "HW week 11"
+subtitle: "w203: Statistics for Data Science"
+author: "Ted Pham"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Get familiar with the data
+You receive a data set from World Bank Development Indicators. 
+
+  - Load the data using `load` and see what is loaded by using `ls()`. You should see `Data` which is the data frame including data, and `Descriptions` which is a data frame that includes variable names. 
+  - Look at the variables, read their descriptions, and take a look at their histograms. Think about the transformations that you may need to use for these variables in the section below. 
+  - Run: `apply(!is.na(Data[,-(1:2)] ) , MARGIN= 2, mean )` and explain what it is showing.
+  - Can you include both `NE.IMP.GNFS.CD` and `NE.EXP.GNFS.CD` in the same OLS model? Why?
+  - Rename the variable named `AG.LND.FRST.ZS` to `forest.` This is going to be our dependent variable.
+
+```{r}
+load("Week11.Rdata")
+ls()
+names(Data)
+```
+
+```{r}
+Definitions
+```
+
+```{r}
+summary(Data)
+```
+### Decribe a model for that predicts `forest`
+
+
+      
+Include all variables except country name and code in the model.
+Find the 2 with the lowest p-value are and the fewest # of NA's
+
+Agricultural raw materials exports and GDP (NY.GDP.MKTP.CD)
+```{r}
+lm.test = lm(AG.LND.FRST.ZS~ . -Country.Name - Country.Code,data = Data)
+summary(lm.test)
+```
+
+
+  - Write a model with two explanatory variables. 
+    - Create a residuals versus fitted values plot and assess whether your coefficients are unbiased.
+```{r}
+lm.fit2var = lm(AG.LND.FRST.ZS ~ TX.VAL.AGRI.ZS.UN + NY.GDP.MKTP.CD, data = Data)
+par(mfrow=c(2,2))
+plot(lm.fit2var)
+
+```
+
+
+```{r}
+ plot(predict(lm.fit2var),rstudent(lm.fit2var))
+ 
+```
+```{r}
+summary(lm.fit2var)
+```
+
+```{r}
+#Check for unbiasness
+#Get the rows used in the fitting 
+data_use = model.frame(lm.fit2var)
+print(sum(data_use$TX.VAL.AGRI.ZS.UN*residuals(lm.fit2var)))
+print(sum(data_use$NY.GDP.MKTP.CD*residuals(lm.fit2var)))
+```
+
+The sum(X*u)'s are roughly equal to zero so we can assume that the estimators are unbiased.
+Also by looking at the standardized residuals vs fitted, we can also see that the residuals are randomly
+distributed around zero, indicative of unbiasness.
+
+
+- How many observations are being used in your analysis? 
+- Are the countries that are dropping out dropping out by random chance? If not, what would this do to our inference?
+
+The number of observations used in the regression is 206.
+
+```{r}
+length(residuals(lm.fit2var))
+```
+```{r}
+#get the list of country ommitted 
+k = data_use$AG.LND.FRST.ZS
+m = data_use$TX.VAL.AGRI.ZS.UN
+l = subset(Data,!Data$AG.LND.FRST.ZS %in% k)
+data_used = subset(Data, Data$AG.LND.FRST.ZS %in% k & Data$TX.VAL.AGRI.ZS.UN %in% m)
+l$Country.Name
+```
+The list of countries ommitted resulted from the NA's from the three columns extracted from Data for the analysis.
+These appears to be the territories of large countries or small countries without accurate reported GDP.
+The number of countries omitted was minimized so it would affect minimally on our model.
+
+```{r}
+  summary(Data$MS.MIL.XPND.ZS)
+```
+  - Now add a third variable.
+  - Show how you would use the regression anatomy formula to compute the coefficient on your third variable.  First, regress the third 
+```{r}
+model3var1= lm(data_used$MS.MIL.XPND.GD.ZS~lm.fit2var$residuals)
+summary(model3var1)
+```
+
+
+variable on your first two variables and extract the residuals.  Next, regress forest on the residuals from the first stage.
+
+
+```{r}
+lm.fit3var = lm(AG.LND.FRST.ZS ~ TX.VAL.AGRI.ZS.UN + NY.GDP.MKTP.CD + MS.MIL.XPND.GD.ZS, data = Data)
+summary(lm.fit3var)
+```
+  - Compare your two models.
+```{r}
+AIC(lm.fit3var) > AIC(model3var1)
+```
+
+- Do you see an improvement? Explain how you can tell.
+
+Did not see an improvement because the AIC of the 2nd model is larger than the one obtained from regress the residuals.
+### Make up a country
+
+  - Make up a country named `Mediland` which has every indicator set at the median value observed in the data. 
+  - How much forest would this country have?
+  
+  Mediland would have 30.95% forest area
+  
+```{r}
+mediland = data.frame("TX.VAL.AGRI.ZS.UN"=1.60804,"NY.GDP.MKTP.CD" = 5.262e+10,"MS.MIL.XPND.GD.ZS" =1.535 )
+predict(lm.fit3var,newdata = mediland, interval = "confidence")
+```
+    
+### Take away
+
+  - Agricultural raw materials exports (% of merchandise exports) is representative of % forest area.
+  - Many NA's values affect the strength of multiregression and not all variables are relevant to the models in common sense.
+  - Must be wary about the fitness of the data for linear regression
+
+
+

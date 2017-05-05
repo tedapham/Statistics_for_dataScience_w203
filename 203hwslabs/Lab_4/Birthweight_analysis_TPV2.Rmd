@@ -1,0 +1,88 @@
+---
+title: "Lab 4: Does Prenatal Care Improve Infant Health?"
+author: "w203: Statistics for Data Science"
+
+date: "April 10, 2017"
+output: pdf_document
+---
+
+# Introduction
+
+This is a group lab.  You may work in teams of 2 or 3.
+
+The file bwght\_w203.RData contains data from the National Center for Health Statistics and from birth certificates.  Your team has been hired by a health advocacy group to study this data and help them understand whether prenatal care improves health outcomes for newborn infants.
+
+The file includes a birthweight variable.  Additonally, the one- and five-minute APGAR scores are included.  These are measures of the well being of infants just after birth.
+
+Variable descriptions are provided as follows.
+
+```{r}
+rm(list=ls())
+load("bwght_w203.RData")
+desc
+```
+
+
+```{r}
+par(mfrow=c(1,2))
+hist(data$fage)
+hist(data$mage)
+```
+```{r}
+dplyr::filter(data,mage<18 | fage<18)
+```
+Motherage follows a fairly normal distribution. However, father age is right skewed. Might be important in analysis.
+```{r}
+# Simple model with only the relevant variables
+df_md1 = dplyr::select(data,bwght,npvis,monpre,npvissq)
+df_md1 <- na.omit(df_md1)
+md1 = lm(bwght ~., data = df_md1)
+summary(md1)
+par(mfrow=c(2,2))
+plot(md1)
+par(mfrow=c(1,1))
+plot(predict(md1),rstudent(md1))
+```
+
+
+Adjusted R_squared is 0.014011. There are polynomial relationship between
+birthweight and number of visit. More visits doesn't necessarily incidate good outcome.
+There are Evidence for outliers in the data in the rstudent plot.
+
+
+```{r}
+#best model?
+df_md2 = dplyr::select(data,bwght,npvis,foth,cigs,male,fage,monpre,npvissq)
+df_md2 <- na.omit(df_md2)
+md2 = lm(bwght ~., data = df_md2)
+summary(md2)
+par(mfrow=c(2,2))
+plot(md2)
+par(mfrow=c(1,1))
+plot(predict(md2),rstudent(md2))
+```
+```{r}
+# problematic variable, father education
+df_md3 = dplyr::select(data,bwght,npvis,foth,cigs,male,fage,monpre,npvissq,feduc)
+df_md3 <- na.omit(df_md3)
+md3 = lm(bwght ~., data = df_md3)
+summary(md3)
+par(mfrow=c(2,2))
+plot(md3)
+par(mfrow=c(1,1))
+plot(predict(md3),rstudent(md3))
+```
+
+
+Adding father education reduces the adjusted R-squared. 
+
+
+
+
+
+
+
+
+
+
+
