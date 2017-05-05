@@ -1,0 +1,656 @@
+---
+title: 'Lab 4: Does Prenatal Care Improve Infant Health?'
+author: "Chris Hipple, Phat Doan, Ted Pham"
+date: "April 25, 2017"
+output:
+  pdf_document: default
+  word_document: default
+geometry: margin = 1in
+fontsize: 10pt
+---
+
+# Introduction
+Variable descriptions are provided as follows.
+
+```{r}
+load("bwght_w203.RData")
+```
+
+```{r}
+suppressMessages(library(boot))
+suppressMessages(library(car))
+suppressMessages(library(gmodels))
+suppressMessages(library(effsize))
+suppressMessages(library(dplyr))
+suppressMessages(library(sandwich))
+suppressMessages(library(lmtest))
+suppressMessages(library(stargazer))
+```
+
+# 1. A brief introduction & exploratory analysis
+
+### Get description and a quick snapshot of the dataset
+```{r}
+colnames(data)
+```
+
+Checking for null/na observations
+```{r}
+sum(is.na(data))
+```
+
+### Remove null/na entirely and save to a new dataframe df_naomit
+```{r}
+df_naomit = na.omit(data)
+```
+
+This data is from the National Center for Health Statistics and from birth certificates.  Our team has been engaged to study the data and understand whether prenatal care improves health outcomes for newborn infants. There are 3 potential outcomes variables in this dataset: birthweight, and one and five-minute APGAR scores.  These are measures of the well-being of infants just after birth. The dataset also contains multiple variables that can be used as predictors such parents' demographic, prenatal care during pregnancy, etc.
+
+# 2. A model building process
+
+## Outcome variables:
+We identify 3 potential outcomes variables in this dataset:
+1/ Birthweight 
+2/ 1-minute APGAR score
+3/ 5-minute APGAR score
+
+### Exploratory analysis of birthweight
+```{r}
+# descriptive stat
+summary(df_naomit$bwght)
+
+# histogram
+hist(df_naomit$bwght, main = "Distribution of weight at birth"
+               , xlab = "Birthweight (grams)"
+               , breaks = seq(0, 6000, by = 100)
+               , col = "blue", ylim = c(0,150))
+abline(v = mean(df_naomit$bwght), col = "red")
+abline(v = median(df_naomit$bwght), col = "green")
+
+legend("topright", c("Mean", "Median"), col = c("red", "green"), pch = "|")
+
+```
+Birthweight variable shows a normal distribution. 2 outliers with less than 1000 grams at birth. Need to investigate further
+
+### Exploratory analysis of apgar score at 1 minute
+```{r}
+# Newborn's APGAR score 1 minute after Birth
+summary(df_naomit$omaps)
+
+# Newborn's APGAR score 5 minutes after Birth
+summary(df_naomit$fmaps)
+
+# histogram
+par(mfrow = c(2,1))
+hist(df_naomit$omaps, main = "Newborn's APGAR score 1 minute after Birth"
+               , xlab = "APGAR score (1 minute after Birth)"
+               , breaks = seq(-1, 10, by = 1)
+               , col = "blue", ylim = c(0,1000))
+abline(v = mean(df_naomit$omaps), col = "red")
+abline(v = median(df_naomit$omaps), col = "green")
+
+hist(df_naomit$fmaps, main = "Newborn's APGAR score 5 minutes after Birth"
+               , xlab = "APGAR score (5 minutes after Birth)"
+               , breaks = seq(-1, 10, by = 1)
+               , col = "blue", ylim = c(0,1000))
+abline(v = mean(df_naomit$fmaps), col = "red")
+abline(v = median(df_naomit$fmaps), col = "green")
+
+```
+APGAR Score 1 Minute after Birth is heavily skewed right but the majority at 8 and 9. APGAR Score 5 Minute after Birth is heavily skewed right but the majority at 9. This shows a improvement for most babies between 1 minute and 5 minutes after birth
+
+### Exploratory analysis of Newborn weight
+```{r}
+CrossTable(df_naomit$lbw, df_naomit$vlbw, format = "SPSS"
+          , prop.c = FALSE, prop.r = FALSE, prop.t = TRUE
+          , prop.chisq = FALSE
+          , dnn = c("Low Birth Weight (<2000g)", "Very Low Birth Weight (<1500g)"))
+
+```
+Only 1.3% of the newborn from the dataset was considered to have low birthweight or very low birthweight
+
+For this exercise, we choose birthweight as the outcome. This variable long has been supported by the medical community as an indicator of baby's health outcome.
+
+## Predictor variables:
+
+We breakdown predictor variables into 4 categories:
+1/ Demographics: age, race, and education
+2/ Prenatal care: month prenatl care began, total number of prenatal visits 
+3/ Mother's behaviors: # of cigarettes per day, # of drink per day
+4/ Newborn gender
+
+### Exploratory analysis of Age & Education
+```{r}
+# Father's ages
+summary(df_naomit$fage)
+
+# Father's education
+summary(df_naomit$feduc)
+
+# Mother's ages
+summary(df_naomit$mage)
+
+# Mother's education
+summary(df_naomit$meduc)
+
+# histogram
+par(mfrow =c(2,2))
+hist(df_naomit$fage, main = "Father's age"
+               , xlab = "Father's age"
+               , breaks = seq(17, 63, by = 1)
+               , col = "blue", ylim = c(0,150))
+abline(v = mean(df_naomit$fage), col = "red")
+abline(v = median(df_naomit$fage), col = "green")
+
+hist(df_naomit$feduc, main = "Father's education"
+               , xlab = "Father's education (years)"
+               , breaks = seq(2, 17,by=1)
+               , col = "blue", ylim = c(0,600))
+abline(v = mean(df_naomit$feduc), col = "red")
+abline(v = median(df_naomit$feduc), col = "green")
+
+hist(df_naomit$fage, main = "Mother's age"
+               , xlab = "Mother's age"
+               , breaks = seq(17, 63, by = 1)
+               , col = "blue", ylim = c(0,200))
+abline(v = mean(df_naomit$fage), col = "red")
+abline(v = median(df_naomit$fage), col = "green")
+
+hist(df_naomit$meduc, main = "Mother's education"
+               , xlab = "Mother's education (years)"
+               , breaks = seq(0, 18,by=1)
+               , col = "blue", ylim = c(0,600))
+abline(v = mean(df_naomit$meduc), col = "red")
+abline(v = median(df_naomit$meduc), col = "green")
+
+```
+
+```{r}
+# Cutting Mother's Age
+df_naomit$mage_cut <- cut(df_naomit$mage, c(-Inf, 20, 25, 40, Inf))
+table(df_naomit$mage_cut)
+
+boxplot(df_naomit$bwght ~ df_naomit$mage_cut
+        , main = "Mother's Age and Newborn Birthweight"
+        , names = c("15 - 20", "21 - 25", "26 - 40", "41+")
+        , xlab = "Ages"
+        , ylab = "Birthweight (grams)")
+
+```
+
+Historgram shows a normal distribution with no outliers (i.e. too young)
+
+Mother's education varibale is highly skewed to the right that can break down into 4 groups: some HS, HS diploma, some college, and college degree. Validity test shows no invalid observation for the variable.
+
+```{r}
+bracket <- c(0,11.5,12.5,15.5, Inf)
+labels = c("some HS", "HS", "some college", "college")
+c1 <- cut(df_naomit$meduc, breaks = bracket)
+# table(c1)
+levels(c1) <- labels
+#table(c1)
+df_naomit$meduc_level <- c1
+
+by_educ <- group_by(df_naomit, meduc_level)
+meduc_influence <- summarise(by_educ,
+                             avg_bwght = mean(bwght),
+                             n = n(),
+                             avg_npvis = mean(npvis),
+                             avg_omaps = mean(omaps),
+                             avg_fmaps = mean(fmaps),
+                             avg_meduc = mean(meduc),
+                             avg_feduc = mean(feduc))
+
+par(mfrow=c(2,2))
+plot(x = jitter(df_naomit$feduc, 2), y = jitter(df_naomit$meduc, 2),
+     main = "Mother and Father's Education Correlation",
+     xlab = "Father's Education (years)",
+     ylab = "Mother's Education (years)")
+
+abline(lm(meduc ~ feduc, data = df_naomit))
+
+print("Correlation between Father's and Mother's Education")
+cor(df_naomit$feduc, df_naomit$meduc)
+
+# Create a variable of average education for parents
+df_naomit<- df_naomit %>% rowwise() %>% mutate(avg_educ = mean(c(meduc, feduc)))
+
+#Do the same for age
+df_naomit<- df_naomit %>% rowwise() %>% mutate(avg_age = mean(c(mage, fage)))
+
+hist(df_naomit$avg_educ
+     , breaks = seq(-0.5, 18, 1)
+     , col = "blue"
+     , main = "Mother's and Father's Education"
+     , xlab = "Avg. Education (years)")
+abline(v = mean(df_naomit$avg_educ), col = "red")
+abline(v = median(df_naomit$avg_educ), col = "green")
+
+edu_model = lm(bwght ~ avg_educ, data = df_naomit)
+
+plot(x = df_naomit$avg_educ, y = df_naomit$bwght
+#    , main = "Avg. education between Mother and Father"
+    , xlab = "Avg. Education (years)"
+    , ylab = "Newborn's birthweight (years)")
+abline(edu_model)
+
+plot(x = jitter(df_naomit$fage, 2), y = jitter(df_naomit$mage, 2),
+#     main = "Mother and Father's Ages Correlation",
+     xlab = "Father's Ages",
+     ylab = "Mother's Ages")
+abline(lm(mage ~ fage, data = df_naomit))
+
+# Correlation between Father's and Mother's Ages
+cor(df_naomit$mage, df_naomit$fage)
+
+```
+High correlation between Mother's and Father's ages that could lead to multi-colinearity between the two variables.
+
+### Exploratory analysis of Newborn gender
+
+There is a close split between male and female newborn in the dataset
+```{r}
+par(mfrow=c(2,2))
+boxplot(bwght ~ male, data = df_naomit, main = "Newborn Gender and Birth Weight"
+        , names = c("Female","Male")
+        , ylab = "Birthweight (g)")
+
+# conduct 2-sample t-test to see if there is a statistical difference between male and female birthweight
+male_bwght = sort(df_naomit$bwght[which(df_naomit$male == 1)])
+
+female_bwght = sort(df_naomit$bwght[which(df_naomit$male == 0)])
+
+hist(df_naomit$male
+     , breaks = seq(0, 1, 0.5)
+     , xlab = "Gender: Female(0) | Male(1)"
+     , col = "blue"
+     , main = "Baby Gender Distribution")
+
+hist(male_bwght
+    , col = "blue"     
+    , main = "Male Birthweight Distribution"
+    , xlab = "Male Birthweight (grams)")
+abline(v = mean(df_naomit$male_bwght), col = "red")
+abline(v = median(df_naomit$male_bwght), col = "green")
+
+hist(female_bwght
+    , col = "blue"
+    , main = "Female Birthweight Distribution"
+    , xlab = "Female Birthweight (grams)")
+abline(v = mean(df_naomit$female_bwght), col = "red")
+abline(v = median(df_naomit$female_bwght), col = "green")
+
+# variance test to verify homoskestacity
+var.test(male_bwght, female_bwght)
+
+# 2-sample t-test
+t.test(male_bwght, female_bwght)
+```
+From visual graph, there is no significant difference between Male and Female birthweight. However, we conducted the 2-sample t-test to verify the statistical significance. First, the variance test  has a p-value > 0.05, therefore we failed to reject the null hypotheis and variance is homogeneous. The 2-sample t-test has p-value = 0.001, thus we reject null hypothesis, meaning there is a statistically significant difference between the mean of male and female birthweight
+
+### Exploratory analysis of Mother's race
+```{r}
+CrossTable(df_naomit$mwhte, df_naomit$mblck, format = "SPSS"
+          , prop.c = FALSE, prop.r = FALSE, prop.t = TRUE
+          , prop.chisq = FALSE
+          , dnn = c("Mother is White","Mother is Black"))
+```
+Heavily skewed white with only ~5% black and ~5% other
+
+### Exploratory analysis of Father's race
+```{r}
+CrossTable(df_naomit$fwhte, df_naomit$fblck, format = "SPSS"
+          , prop.c = FALSE, prop.r = FALSE, prop.t = TRUE
+          , prop.chisq = FALSE
+          , dnn = c("Father is White","Father is Black"))
+
+```
+Similar to Mother's race variable, father's race is heavily skewed white with only ~5% black and ~5% other
+
+### combine race into white or others
+```{r}
+CrossTable(df_naomit$fwhte, df_naomit$mwhte, format = "SPSS"
+          , prop.c = FALSE, prop.r = FALSE, prop.t = T
+          , prop.chisq = FALSE
+          , dnn = c("Father is White","Mother is White"))
+
+
+cor(df_naomit$fwhte, df_naomit$mwhte)
+```
+
+#### Applying Transformations
+```{r}
+males = df_naomit[df_naomit$male == 1,]
+females = df_naomit[df_naomit$male == 0,]
+t.test(males$bwght, females$bwght, alternative = "greater")
+
+df_naomit <- df_naomit %>% mutate(whte = mwhte & fwhte)
+table(df_naomit$whte)
+t.test(df_naomit$bwght[df_naomit$whte], df_naomit$bwght[!df_naomit$whte])
+```
+There is a statistically significant difference between the birth weights of babies with two white parents vs babies which do not have two white parents.
+
+### Exploratory analysis of month prenatal care began
+
+#### Cutting monpre variable
+
+```{r}
+table(df_naomit$monpre)
+
+# Month prenatal care began
+summary(df_naomit$monpre)
+
+# Number of Prenatal Care Visits
+summary(df_naomit$npvis)
+
+# histogram
+par(mfrow = c(2,2))
+
+hist(df_naomit$monpre, main = "Month prenatal care began"
+               , xlab = "Month Prenatal care began"
+               , breaks = seq(-1, 9, by = 1)
+               , col = "blue", ylim = c(0,800))
+abline(v = mean(df_naomit$monpre), col = "red")
+abline(v = median(df_naomit$monpre), col = "green")
+
+hist(df_naomit$npvis, main = "# of prenatal care visit"
+               , xlab = "# of prenatal care visit during pregnacy"
+               , breaks = seq(-1, 40, by = 1)
+               , col = "blue", ylim = c(0,600))
+abline(v = mean(df_naomit$npvis), col = "red")
+abline(v = median(df_naomit$npvis), col = "green")
+
+df_naomit$monpre_cut <- cut(df_naomit$monpre, c(-Inf, 3, 6, Inf))
+        
+boxplot(df_naomit$bwght ~ df_naomit$monpre_cut
+        , main = "When Prenatal Care Began and Birthweight"
+        , names = c("1", "2nd", "3rd")
+        , xlab = "Trimester"
+        , ylab = "Birthweight (grams)")
+
+# checking for multicollinerarity between when prenatal care started and numbers of prenatal care visit
+plot(x = jitter(df_naomit$monpre, 2), y = jitter(df_naomit$npvis, 2),
+     main = "Correlation Check",
+     xlab = "Month prenatal care began",
+     ylab = "# of prenatal care visit")
+abline(lm(npvis ~ monpre, data = df_naomit))
+
+# Correlation between when prenatal care started and numbers of prenatal care visit
+cor(df_naomit$monpre, df_naomit$npvis)
+```
+Variable is heavily skewed to the left with majority of mothers start prenatal care at 2 months (first tri-semester). No outlier was observed.  
+
+Normal distribution with most mothers have 12 prenatal care visits during their pregnancy. There are a few outliers with greater than 20 visits. This might be an indicator of high risk pregnancy
+
+### Exploratory analysis of cigarette and alcohol use during pregnancy
+```{r}
+# Cigarette Use During Pregnancy
+summary(df_naomit$cigs)
+
+# Drink Use During Pregnancy
+summary(df_naomit$drink)
+
+# histogram
+par(mfrow=c(2,2))
+hist(df_naomit$cigs, main = "Cigarettes use during pregnancy"
+               , xlab = "Average cigarettes per day"
+               , breaks = seq(-1, 40, by = 1)
+               , col = "blue", ylim = c(0,1800))
+abline(v = mean(df_naomit$cigs), col = "red")
+abline(v = median(df_naomit$cigs), col = "green")
+
+# histogram
+hist(df_naomit$drink, main = "Alcohol use during pregnancy"
+               , xlab = "Average drinks per week"
+               , breaks = seq(-1, 8, by = 1)
+               , col = "blue", ylim = c(0,1800))
+abline(v = mean(df_naomit$drink), col = "red")
+abline(v = median(df_naomit$drink), col = "green")
+
+# checking for multicollinerarity between cigarett use started and number of drinks per day
+plot(x = jitter(df_naomit$cigs, 2), y = jitter(df_naomit$drink, 2),
+     main = "Cigarette and Drink Use Correlation",
+     xlab = "Avg. Cigarettes per Day",
+     ylab = "Avg. Drinks per Week")
+
+abline(lm(drink ~ cigs, data = df_naomit))
+
+print("Correlation between Cigarette and Drink Use")
+cor(df_naomit$cigs, df_naomit$drink)
+
+```
+
+#### Cutting into Smoker's and Non Smokers
+```{r}
+df_naomit$is_smoker = cut(df_naomit$cigs, c(-1, 0.5, Inf), labels = c(0, 1))
+t.test(df_naomit$bwght[df_naomit$is_smoker == 0], df_naomit$bwght[df_naomit$is_smoker == 1])
+
+mean_cigs <- mean(df_naomit$cigs[df_naomit$is_smoker == 1])
+```
+There is a highly statistically significant difference between the birthweight of babies who's mothers smoke vs those who's mothers did not smoke.
+
+However, there are many more mothers in the sample who do not smoke than those who do.
+
+#### Cutting into Drinkers and Non Drinkers
+
+The drink variable was very highly skewed, with almost no mother's drinking, and some drinking a couple of drinks per day.  With the skew as is, we can't meaningfully analyze the effect drinking has on birthweight, but due to prevailing wisdom of drinking during pregnancy being bad, we chose to look to see if we could cut the group into drinkers and non-drinkers and see if there was a meaningful difference.
+
+```{r}
+df_naomit$is_drinker= cut(df_naomit$drink, c(-1, 0.5, Inf), labels = c(0, 1))
+t.test(df_naomit$bwght[df_naomit$is_drinker == 0], df_naomit$bwght[df_naomit$is_drinker == 1])
+table(df_naomit$is_drinker)
+```
+
+With this dataset, there are almost 1600 mothers who do not drink and only 16 who do, soeven though there is a difference of about 80 grams of birthweight for the baby between the two groups, we fail to reject the null hypothesis that there is a difference between the two groups.
+
+# 3 & 4. Model1  Building Process and Checking all Assumptions
+
+For the model building process, we're going to start with looking directly at the proposed question, which is does prenatal care improve infant birth health.  For this analysis, we're going to use  weight at birth as our measure of infant health, with a heavier baby being healthier.  This is a farily common accepted metric.  Other possible metrics included in the dataset are the APGAR scores for the baby at 1 and 5 minutes.  These ordinal values have potential to be a good metric, but our dataset does not have a wide variety of APGAR scores, with most scores being in the 7-9 range.
+
+The first model we'll look at is birthweight as a function of just number of visits to a prenatal physician and which month the family began prenatal care.
+
+## Model 1
+- One model with only the explanatory variables of key interest: birthweight, npvis, monpre, cigs, and drink 
+
+```{r}
+model1_v1 <- lm(bwght ~ npvis + monpre + cigs + drink, data = df_naomit)
+
+model1_v2 <- lm(bwght ~ npvis + cigs + drink, data = df_naomit)
+
+model1_v3 <- lm(bwght ~ npvis + cigs, data = df_naomit)
+
+model1_v4 <- lm(bwght ~ npvis + monpre, data = df_naomit)
+
+model1_v5 <- lm(bwght ~ monpre + npvis + npvissq, data = df_naomit)
+
+stargazer(model1_v1, model1_v2, model1_v3, model1_v4, model1_v5, type = "text"
+          , star.cutoffs = c(0.05, 0.01, 0.005)
+          , title = "Model 1: Explantory Variables of Key Interst"
+          , align = T, no.space = T
+          , omit.stat = c("ser", "f"))
+
+par(mfrow=c(2,2))
+plot(model1_v5)
+
+par(mfrow=c(1,1))
+plot(predict(model1_v5),rstudent(model1_v5))
+```
+Adjusted R_squared is 0.014011. There are polynomial relationship between birthweight and number of visit. More visits doesn't necessarily incidate good outcome. There are Evidence for outliers in the data in the rstudent plot.
+
+### Checking the Classical Linear Model Assumptions for Ordinary Least Squares Regression.
+
+#### Assumptions 1 and 2:
+
+The first of the Classical Linear Model Assumptions state that there is a linear population model. This is a very weak assumption and we can accept it knowing that we'll only use linear parameters for our coefficients.
+
+Assumption 2 states that the data comes from a random sample with the population. Looking at this data, we can see that the predominate race in the data is white, which we know is not representative of the population as a whole, but for populations of many communities across America it is. We'll choose to accept this assumption for this analysis.
+
+#### Assumption 3 - No Perfect Multicolinearity
+
+Assumption 3 states that no two of the independent variables are perfectly correlated.  Naturally we would expect some correlation between number of visits and how early the parents began prenatal care, as an early start date would allow for more time for more visits, but they will not be perfectly correlated.
+
+```{r}
+vif(model1_v5)
+```
+The variance inflation factors between the two variables are just over 1, which is not a significant cause for worry.  This allows us to accept Assumption 3, No Perfect Multicolinearity.
+
+### Assumption 4 - Zero Conditional Mean
+
+Assumption 4 states that none of the independent variables provide any information of the value of the residuals.  For a given value of the independent variable, the expected value of the  error term should not change, and should still be equal to 0.  To check this assumption, we look at the residuals vs fitted values plot, and make sure there aren't any trends.
+
+```{r}
+plot(model1_v5, which = 1)
+```
+
+There are a few slight bumps in the fitted curve, but across the dataset it does seem to be very flat and smooth as a whole.  On the right side of the chart where the fitted values get very high, there is a noticeable downward slope on the residual, but there is significantly less data over there and its not a major shift.
+
+We'll choose to accept assumption 4 given this information.
+
+Having accepted Assumption #4, we can now say that our estimators are unbiased and consistent.
+
+#### Assumption 5 - Homoskedasticity of Errors.
+
+Assumption 5 states that the variance of the error term should be consistent across the entire range of fitted values. To test this, we can can look at the plot above and see if the thickness of the band of points changes throughout the graph.  Again, at the higher ranges of fitted values, we seem to have found some changes from the rest of the data.  It appears there is less variance amoung the residuals when the fitted value is above 3500 grams.
+
+To account for this we'll make sure to use heteroskedastic robust standard errors in our tests.
+
+#### Assumption 6 - Normal Distribution of Errors
+
+Assumption 6 requires that the errors are normally distributed. Looking at the histogram of the model's errors will show us whether or not we have a problem.
+
+```{r}
+hist(model1_v5$residuals, main = "Distribution of Errors",
+     xlab = "Residual")
+```
+
+We can see a strong concentration in center with a slight right skew, indicating not a perfect normal distribution, but the overall shape is okay, so we'll choose to accept this assumption.
+
+Notes on this model: Omitted Variable Bias and Accuracy
+
+This model is an extremely simplified approximation of a statistic that is known to have very many factors.  Not including the other variables costs us a significant amount of accuracy and  likely introduces omitted variable bias.
+
+## Model 2: Improving on previous model
+From the exploratory analysis, we know that there are several more factors which are important in predicting infant birth weight.  We saw that gender of the baby, cigarette use, and age of the father, education, and race were all important factors.
+
+It is known that the age of the father is a factor in baby's health, but typically a mother's age is thought of to be more important.  In this dataset, the father's age is a more important factor in the baby's weight, so we'll model using that.
+
+```{r}
+model2 <- lm(bwght ~ npvis + monpre_cut + male + cigs + fage + avg_educ + whte, data = df_naomit)
+summary(model2)
+coeftest(model2, vcov = vcovHC)
+```
+
+### Checking CLM Assumptions for updated model.
+
+After changing the model we must reexamine the CLM assumptions to see if we still have BLUE OLS estimators and that we have normally distributed error terms.  Normally distributed error terms will allow us to perform hypothesis tests on the coefficients, which will help us further refine the model.
+
+```{r}
+vif(model2, vcov = vcovHC)
+par(mfrow = c(2,2))
+plot(model2)
+```
+None of the coefficients have a variance inflation factor much greater than one, suggesting we have no issues with multicolinearity.The residuals vs fitted values for plot one show that we have a zero conditional mean for our errors and that heteroskedasticity isn't a significant problem.
+
+Our Q-Q plot has some tails similar to the previous model, but the majority of the data falls nicely onto the straight line, so we don't foresee any issues with the distribution of our error terms. 
+
+In the summary output of the model, we notice that average years of education bewteen the parents is does not have a significant coefficient value.  We can run an F-test on the model and a reduced model without education to see if that would be a cause for improvement.
+
+```{r}
+linearHypothesis(model2, c("avg_educ = 0"), vcov = vcovHC)
+```
+
+Running an F test for a reduced model, we see that we fail to reject the null that  the restricted model is better by setting the coefficient for average education to zero.  While not statistically significant on it's own, it does improve the model.
+
+## Model 3: Problematic covariates
+
+Mother's age has many non-linear interactions with the other explanatory variables when the mother is young.  This makes sense that a mother under the age of 23 will not have had as much time to get more education.  There also may be a social stigma which prevents them telling anyone they  are pregnant until it begins to show, which would explain the later start to getting prenatal care.
+
+To remedy this, we'll create a young mom indicator variable which will help account for the non linear effects of being a young mother.  With this, we'll also keep the average education between  the parents in the model because we may now be able to account for it properly.
+
+```{r}
+df_naomit$young_mom <- cut(df_naomit$mage, c(-Inf, 23, Inf), labels = c(1, 0))
+t.test(df_naomit$bwght[df_naomit$young_mom == 1], df_naomit$bwght[df_naomit$young_mom == 0])
+
+model3 <- lm(bwght ~ npvis + monpre_cut + male + cigs + fage + avg_educ + whte + young_mom,
+             data = df_naomit)
+coeftest(model3, vcov = vcovHC)
+summary(model3)
+linearHypothesis(model3, c("fage = 0", "avg_educ = 0", "young_mom0 = 0"), vcov = vcovHC)
+```
+
+In model 3, On our linear hypothesis tests, we reject the restricted model which would remove the three variables accounting for age and education in our model.  Of the models we built, model3 also contains the highest adjusted R-squared, of 0.02291.
+
+The young_mom0 coefficient means that the adjustment for being a young mother is a reduction in 
+
+### Checking the CLM Assumptions for the new model
+
+After adding the indicator for young mothers, let's check whether or not our CLM assumptions still hold.
+
+```{r}
+par(mfrow = c(2,2))
+plot(model3)
+```
+
+The plot of residuals vs fitted values shows that we maintain a zero conditional mean and have  actually reduced our heteroskedasticity.
+
+The normality of the errors is still clumped towards the center with tails on either side.  Again, we'll choose to accept the the normality of errors assumption, CLM #6.
+
+# 5. A well-formatted regression table summarizing your model results.  Make sure that standard errors presented in this table are valid.  Also be sure to comment on both statistical and practical significance.
+
+```{r}
+par(mfrow = c(2,2))
+plot(model3)
+
+stargazer::stargazer(model1_v5, model2, model3
+                    , type = "text"
+                    , star.cutoffs = c(0.05, 0.01, 0.005)
+                    , title = "Regression analysis of baby health outcome and prenatal care"
+                    , covariate.labels = c("Prenatal Care (Month)", "Prenatal Visits"
+                                          , "Prenatal Visits (Squared)"
+                                          , "Prenatal Care (1st/2nd Tri)"
+                                          , "Prenatal Care (3rd Tri)"
+                                          , "Newborn is Male", "Cigarettes per Day" 
+                                          , "Father's Ages", "Parents' Education"
+                                          , "Parents are white", "Mother a young parent?")
+                    , dep.var.labels   = "Birthweight (in grams)"
+                    , single.row = F, column.sep.width = "2pt"
+                    , align = T, no.space = T)
+
+```
+
+## Statistical significance
+We observed multiple instances with statiscal significance:
+1/ Male and female birthweight are different
+2/ The birth weights of babies with two white parents vs babies which do not have two white parents
+3/ Babies whose mothers smoke vs those whose mothers did not smoke
+4/ With this dataset, there are almost 1600 mothers who do not drink and only 16 who do, soeven though there is a difference of about 80 grams of birthweight for the baby between the two groups
+
+## Practical significance
+From the practical view of the statistically significant observations, we draw these conclusions:
+1/ Male is born, on average, ~3% heavier than female 
+2/ Babies that are born to two white parents tends to be heavier than babies that do not have two white parents.
+3/ Mothers who do not smoke, on average, give birth to babies that are ~6% heavier than babies of mothers who smoke during pregnancy
+4/ Prenatal care visit and cigarette usage during the pregancy can affect newborn weight
+
+# 6. Discussions
+We cannot draw casuality from the model for two reasons:
+1/ The fits are not ideal, at on 2.29% 
+2  There's too many other ommitted variables that could be causing bias. For examples
+   a/ Parents' income
+   b/ Parents' health metrics such as bmi
+   c/ If newborn was premature. This is from observing mothers with more than 20 prenatal care visits. This is often an indication of high risk pregnancy.
+   d/ Only 1.3% of the newborn from the dataset was considered to have low birthweight or very low birthweight
+
+At the same time, dataset is potentially bias and might not represent a truly random sample of American population:
+1/ Most variables are heavily skewed to predominantly white, highly educated parents that are also non-smoker, non-drinker
+2/ Majority of mothers start prenatal care at 2 months (first tri-semester), indicating a planned pregnancy
+
+#7. High-level takeaways.
+
+In summary, our model explains a week relationship between the outcome measured in birthweight and the number prenatal care visits.
+Father age was a surprising contributing variable in our model. This seems counter-intuitive especially when mother age did not have
+the same effect; therefore, we suspect that the data was potentially non-random. Mothers' supposedly detrimental behaviors as 
+cigarettes and drink consumptions were considered but only # of cigarette was statistically significant in explaining
+some of the outcome variability. Only 16/1612 mothers included in the analysis consumed alcohol during pregnancy while 147 smoked.
+Further studies on the effect of cigs and bwght might prove beneficial in advising mother's behaviors.
+
